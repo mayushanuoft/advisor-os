@@ -5,6 +5,7 @@ Dashboard loads immediately — no API or file upload required.
 """
 
 import streamlit as st
+import time
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -173,6 +174,29 @@ section[data-testid="stSidebar"] .stMarkdown h2 {
 /* ---- Hide Streamlit chrome ---- */
 #MainMenu, footer { visibility: hidden; }
 header[data-testid="stHeader"] { visibility: hidden; height: 0; }
+
+/* ---- Upload loading overlay ---- */
+.upload-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.35);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.upload-spinner {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: 5px solid rgba(255, 255, 255, 0.35);
+    border-top-color: #ffffff;
+    animation: spin 0.9s linear infinite;
+    box-shadow: 0 0 18px rgba(0, 0, 0, 0.25);
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -274,11 +298,33 @@ daily = daily.rename(columns={"DateDay": "Date"})
 # ---------------------------------------------------------------------------
 # PDF Upload (must run before sidebar so Client File can show filename)
 # ---------------------------------------------------------------------------
+if "upload_loading" not in st.session_state:
+    st.session_state.upload_loading = False
+    st.session_state.upload_loading_until = 0.0
+
+def trigger_upload_loading():
+    st.session_state.upload_loading = True
+    st.session_state.upload_loading_until = time.time() + 1.2
+
 uploaded_file = st.file_uploader(
     "Upload client statement (PDF)",
     type=["pdf"],
     help="Bank or credit card statement. Text will be extracted and shown below.",
+    key="client_pdf_upload",
+    on_change=trigger_upload_loading,
 )
+
+if st.session_state.upload_loading:
+    remaining = st.session_state.upload_loading_until - time.time()
+    if remaining > 0:
+        st.markdown(
+            "<div class='upload-overlay'><div class='upload-spinner'></div></div>",
+            unsafe_allow_html=True,
+        )
+        time.sleep(min(remaining, 1.5))
+        st.rerun()
+    else:
+        st.session_state.upload_loading = False
 
 # ---------------------------------------------------------------------------
 # Sidebar (with session-state toggle)
@@ -301,7 +347,7 @@ with st.sidebar:
         st.markdown(f"Fixed Costs &nbsp;&nbsp; **${fixed_total:,.0f}** ({fixed_total/total_spend*100:.0f}%)" if uploaded_file else "Blank")
         st.markdown(f"Discretionary &nbsp; **${disc_total:,.0f}** ({disc_total/total_spend*100:.0f}%)" if uploaded_file else "Blank")
         st.divider()
-        st.caption("Data is hardcoded for demo purposes.")
+        # st.caption("Data is hardcoded for demo purposes.")
     else:
         if st.button("▶ Show sidebar", key="sidebar_toggle"):
             st.session_state.sidebar_expanded = True
